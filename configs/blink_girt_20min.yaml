@@ -1,0 +1,16 @@
+data_path :
+  - 'data/blink and girt_EPOCX_233756_2024.08.19T17.29.05+08.00.md.pm.bp.csv'
+  - 'data/blink2_EPOCX_233756_2024.08.21T22.50.27+08.00.md.csv'
+  - 'data/blink3_EPOCX_233756_2024.08.21T22.59.54+08.00.md.csv'
+  - 'data/blink4_EPOCX_233756_2024.08.21T23.11.04+08.00.md.csv'
+exp_name : '20min_blink_grit'
+batch_size : 4
+seed : 6
+num_epochs : 100
+train_split : 0.6
+val_split : 0.2
+total_sec : 300
+sample_intention : [1, 3]
+class_names : ['Blink', 'Grit']
+sr : 128
+duration : 5

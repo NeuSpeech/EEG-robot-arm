@@ -1,0 +1,13 @@
+data_path :
+  - 'data/blink and girt 3s_EPOCX_224293_2024.09.02T17.00.46+08.00.md.csv'
+batch_size : 4
+seed : 7
+num_epochs : 100
+train_split : 0.6
+val_split : 0.2
+total_sec : 600
+sample_intention : [1, 3,2]
+class_names : ['Girt', 'Blink','Rest']
+sr : 128
+duration : 3
+segment_marks : [3,3,3,3]
