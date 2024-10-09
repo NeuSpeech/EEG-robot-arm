@@ -53,8 +53,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         # save model
         if val_accuracy >best_acc:
             best_acc=val_accuracy
-            os.makedirs('model',exist_ok=True)
-            torch.save(model,f=f'model/{exp_name}.pth')
+            model_path=f'model/{exp_name}.pth'
+            os.makedirs(os.path.dirname(model_path),exist_ok=True)
+            torch.save(model,f=model_path)
 
         print(
             f'Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss_history[-1]:.4f}, Val Loss: {val_loss_history[-1]:.4f}, Val Accuracy: {val_accuracy:.4f}')
@@ -217,6 +218,9 @@ if __name__ == '__main__':
     parser.add_argument('--config_path', type=str,
                         default='',
                         help='Path to the CSV data file')
+    parser.add_argument('--seed', type=int,
+                        default=None,
+                        help='Path to the CSV data file')
     args = parser.parse_args()
     yaml_file_path = args.config_path
 
@@ -228,7 +232,11 @@ if __name__ == '__main__':
     data_path = config['data_path']
     exp_name = config.get('exp_name',os.path.basename(args.config_path)[:-5])
     batch_size = config['batch_size']
-    seed = config['seed']
+    if args.seed is None:
+        seed = config['seed']
+    else:
+        seed = args.seed
+    exp_name=exp_name+'/seed'+str(seed)
     num_epochs = config['num_epochs']
     train_split = config['train_split']
     val_split = config['val_split']

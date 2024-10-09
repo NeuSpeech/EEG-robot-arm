@@ -1,0 +1,13 @@
+data_path :
+  - 'data/tongue_EPOCX_237114_2024.09.18T21.12.16+08.00.md.csv'
+batch_size : 4
+seed : 7
+num_epochs : 100
+train_split : 0.6
+val_split : 0.2
+total_sec : 600
+sample_intention : [5,2]
+class_names : ['Roll','Rest']
+sr : 128
+duration : 3
+segment_marks : [3,3,3,3,3,3,3,3]
