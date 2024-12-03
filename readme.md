@@ -9,10 +9,42 @@ We provide Chinese/English guidance
 这是我们用脑电控制机械臂喝水的演示视频。
 ![image](demo/demo-eeg-robot-arm-drink-water.gif)
 
-我们这里展示的是眨眼和咬牙的分类，在眨眼，咬牙和休息的三分类任务上取得了90%的正确率，结果在[这里](fig/blink_girt_3s_still_10min_3classifications_0903)。
+代码有什么特征？
+我们将几乎所有机器学习的模型都加入了，并且加入了很多经典的深度学习模型。
+模型和注册名称列表如下：
 
-我们还做了非常前沿的探索，比如[舌头放置位置的分类](tongue/img.png)。
-
+- SVM: svm
+- Random Forest: random_forest
+- KNN: knn
+- Decision Tree: decision_tree
+- XGBoost: xgboost
+- LightGBM: lightgbm
+- CatBoost: catboost
+- AdaBoost: adaboost
+- Gaussian Naive Bayes: gaussian_nb
+- Multinomial Naive Bayes: multinomial_nb
+- Bernoulli Naive Bayes: bernoulli_nb
+- Logistic Regression: logistic
+- SGD Classifier: sgd
+- Linear SVC: linear_svc
+- LDA: lda
+- QDA: qda
+- Nearest Centroid: nearest_centroid
+- Lasso: lasso
+- Ridge Classifier: ridge
+- Elastic Net: elastic_net
+- EEGNet: eegnet
+- Simple CNN: simple_cnn
+- Simple RNN: simple_rnn
+- Simple LSTM: simple_lstm
+- ResNet-like: resnet_like
+- Transformer-like: transformer_like
+- DenseNet-like: densenet_like
+- LSTM with Attention: lstm_attention
+- Inception-like: inception_like
+- UNet-like: unet_like
+- MobileNet-like: mobilenet_like
+- SqueezeNet-like: squeezenet_like
 
 如何使用这份代码？
 你只需要复制一份yaml文件并编辑，然后在命令行中运行一下即可训练并评估
@@ -26,6 +58,7 @@ python train.py --config_path="your_config_path"
 python train_multiple_times.py --config_path="your_config_path"
 ```
 
+如果想训练多个模型，可以运行train_multiple_times.bat，这样会将所有模型训练10次，保存结果，并且生成一个excel表格。
 
 * data_path 可以使用一个或多个数据
 * seed 可以用于控制效果复现
@@ -41,9 +74,3 @@ Shenghao GAO: data collection and robot arm demo.
 
 Yiqian YANG: data modeling and analysis.
 
-
-加个微信吧，一起研究神经信号，之后还会有更精彩的项目分享出来，保持关注哦
-
-进群改下马甲哦，学校专业姓名
-
-![image](contact/915ceda980134e4ff679c8c6bea5fe1.jpg)

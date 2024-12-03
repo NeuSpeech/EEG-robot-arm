@@ -2,7 +2,6 @@
 #### 版权所有：@2024 Yiqian Yang, github: https://github.com/NeuSpeech
 
 
-
 import os
 import json
 import pandas as pd
@@ -31,18 +30,23 @@ from sklearn.linear_model import LogisticRegression, SGDClassifier, RidgeClassif
 from sklearn.svm import LinearSVC
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis, QuadraticDiscriminantAnalysis
 from sklearn.neighbors import NearestCentroid
+
 # 添加模型注册表
 _MODEL_REGISTRY = {}
 ML_MODELS = ['svm', 'random_forest', 'knn', 'decision_tree', 'xgboost', 'lightgbm', 'catboost', 'adaboost',
              'gaussian_nb', 'multinomial_nb', 'bernoulli_nb', 'logistic', 'sgd', 'linear_svc',
-             'lda', 'qda', 'nearest_centroid','lasso'] # 所有传统机器学习模型的名称列表
+             'lda', 'qda', 'nearest_centroid', 'lasso', 'ridge', 'elastic_net']  # 所有传统机器学习模型的名称列表
+
 
 def register_model(name):
     """模型注册装饰器"""
+
     def decorator(cls):
         _MODEL_REGISTRY[name] = cls
         return cls
+
     return decorator
+
 
 def get_model(name):
     """通过名称获取模型类"""
@@ -50,8 +54,9 @@ def get_model(name):
         raise ValueError(f"未知的模型名称: {name}")
     return _MODEL_REGISTRY[name]
 
+
 def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=10):
-    best_acc=0
+    best_acc = 0
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -88,11 +93,11 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         val_accuracy_history.append(val_accuracy)
 
         # save model
-        if val_accuracy >best_acc:
-            best_acc=val_accuracy
-            model_path=f'model/{exp_name}.pth'
-            os.makedirs(os.path.dirname(model_path),exist_ok=True)
-            torch.save(model,f=model_path)
+        if val_accuracy > best_acc:
+            best_acc = val_accuracy
+            model_path = f'model/{exp_name}.pth'
+            os.makedirs(os.path.dirname(model_path), exist_ok=True)
+            torch.save(model, f=model_path)
 
         print(
             f'Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss_history[-1]:.4f}, Val Loss: {val_loss_history[-1]:.4f}, Val Accuracy: {val_accuracy:.4f}')
@@ -128,7 +133,7 @@ def test_model(model, test_loader):
     total = 0
     all_predicted = []
     all_targets = []
-    
+
     if model_name in ML_MODELS:  # 使用模型名称列表来判断
         # 传统机器学习模型的测试过程
         for data, target in test_loader:
@@ -136,15 +141,15 @@ def test_model(model, test_loader):
                 data = data.cpu().numpy()
             data = data.reshape(data.shape[0], -1)
             predicted = model(data)
-            print("predicted shape",predicted.shape)
-            print("predicted",predicted)
-            print("target shape",target.shape)
-            print("target",target)
+            print("predicted shape", predicted.shape)
+            print("predicted", predicted)
+            print("target shape", target.shape)
+            print("target", target)
             # 如果预测的形状不一样，而且只是多了个维度，且该维度是1，就变成一样的。
-            if predicted.shape!=target.shape:
-                if predicted.shape[-1]==1:
-                    predicted=predicted.squeeze(-1)
-            assert predicted.shape==target.shape,'must be same shape, or the accuracy will be wrong'
+            if predicted.shape != target.shape:
+                if predicted.shape[-1] == 1:
+                    predicted = predicted.squeeze(-1)
+            assert predicted.shape == target.shape, 'must be same shape, or the accuracy will be wrong'
             total += target.size(0)
             correct += (predicted == target).sum().item()
             all_predicted.extend(predicted.cpu().numpy())
@@ -162,7 +167,7 @@ def test_model(model, test_loader):
                 all_predicted.extend(predicted.numpy())
                 all_targets.extend(target.numpy())
         test_loss /= len(test_loader.dataset)
-    
+
     accuracy = correct / total
     f1 = f1_score(all_targets, all_predicted, average='macro')
 
@@ -239,7 +244,7 @@ def load_one_data(data_path):
     print(f'data_np:{data_np.shape}')
     data_np = data_np[:total_sec * 128, 4:18]
     # 初始化多个标签的数据列表
-    classes_num=len(sample_intention)
+    classes_num = len(sample_intention)
     datas = [[] for _ in range(classes_num)]
 
     # 分割数据
@@ -260,7 +265,7 @@ def load_one_data(data_path):
             end = i + segment_indexes[sample_intention[j] + 1]
             # print(f'i:{i} j:{j} start:{start} end:{end} sec:{end-start} '
             #       f'si:{sample_intention[j]} ')
-            new_data=data_np[start:end]
+            new_data = data_np[start:end]
             datas[j].append(new_data)
         count += 1
     # print([e.shape for d in datas for e in d])
@@ -272,8 +277,8 @@ def load_one_data(data_path):
     datas = np.concatenate(datas)
     labels = np.concatenate(labels).astype(np.int32)
     # 把数据按照时间的顺序组装
-    datas = rearrange(datas,'(a b) c d-> (b a) c d', a=classes_num)
-    labels = rearrange(labels,'(a b) -> (b a)', a=classes_num)
+    datas = rearrange(datas, '(a b) c d-> (b a) c d', a=classes_num)
+    labels = rearrange(labels, '(a b) -> (b a)', a=classes_num)
     # print(f'datas:{datas.shape}')
     # print(datas[:5],labels[:5])
     # print(datas[-5:],labels[-5:])
@@ -288,21 +293,21 @@ class SVMWrapper(nn.Module):
         self.model = SVC(kernel='rbf', probability=True)
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         # 转换输入数据格式 [batch, channels, time] -> [batch]
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         # 返回类别预测
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             # 收集所有训练数据
@@ -312,16 +317,17 @@ class SVMWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-        
+
             # 训练模型
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('random_forest')
 class RandomForestWrapper(nn.Module):
@@ -330,21 +336,21 @@ class RandomForestWrapper(nn.Module):
         self.model = RandomForestClassifier(n_estimators=100)
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         # 转换输入数据格式 [batch, channels, time] -> [batch, features]
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         # 返回类别预测
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             # 收集所有训练数据
@@ -354,16 +360,17 @@ class RandomForestWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             # 训练模型
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('knn')
 class KNNWrapper(nn.Module):
@@ -372,19 +379,19 @@ class KNNWrapper(nn.Module):
         self.model = KNeighborsClassifier(n_neighbors=5)
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -393,15 +400,16 @@ class KNNWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('decision_tree')
 class DecisionTreeWrapper(nn.Module):
@@ -410,19 +418,19 @@ class DecisionTreeWrapper(nn.Module):
         self.model = DecisionTreeClassifier(random_state=42)
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -431,15 +439,16 @@ class DecisionTreeWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('xgboost')
 class XGBoostWrapper(nn.Module):
@@ -451,19 +460,19 @@ class XGBoostWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -472,15 +481,16 @@ class XGBoostWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('lightgbm')
 class LightGBMWrapper(nn.Module):
@@ -493,19 +503,19 @@ class LightGBMWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -514,15 +524,16 @@ class LightGBMWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('catboost')
 class CatBoostWrapper(nn.Module):
@@ -534,19 +545,19 @@ class CatBoostWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -555,15 +566,16 @@ class CatBoostWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('adaboost')
 class AdaBoostWrapper(nn.Module):
@@ -575,19 +587,19 @@ class AdaBoostWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -596,15 +608,16 @@ class AdaBoostWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('gaussian_nb')
 class GaussianNBWrapper(nn.Module):
@@ -613,19 +626,19 @@ class GaussianNBWrapper(nn.Module):
         self.model = GaussianNB()
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -634,15 +647,16 @@ class GaussianNBWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('multinomial_nb')
 class MultinomialNBWrapper(nn.Module):
@@ -651,21 +665,21 @@ class MultinomialNBWrapper(nn.Module):
         self.model = MultinomialNB()
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         # MultinomialNB需要非负数据
         x = self.scaler.transform(x)
-        x = x - x.min() # 确保数据非负
+        x = x - x.min()  # 确保数据非负
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -674,16 +688,17 @@ class MultinomialNBWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
-            X = X - X.min() # 确保数据非负
+            X = X - X.min()  # 确保数据非负
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('bernoulli_nb')
 class BernoulliNBWrapper(nn.Module):
@@ -692,21 +707,21 @@ class BernoulliNBWrapper(nn.Module):
         self.model = BernoulliNB()
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         # 将数据二值化（大于0的设为1，小于等于0的设为0）
         x = (x > 0).astype(np.float64)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -715,10 +730,10 @@ class BernoulliNBWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             # 将数据二值化
@@ -726,6 +741,7 @@ class BernoulliNBWrapper(nn.Module):
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('logistic')
 class LogisticRegressionWrapper(nn.Module):
@@ -738,19 +754,19 @@ class LogisticRegressionWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -759,15 +775,16 @@ class LogisticRegressionWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('sgd')
 class SGDClassifierWrapper(nn.Module):
@@ -780,19 +797,19 @@ class SGDClassifierWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -801,15 +818,16 @@ class SGDClassifierWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('linear_svc')
 class LinearSVCWrapper(nn.Module):
@@ -821,19 +839,19 @@ class LinearSVCWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -842,15 +860,16 @@ class LinearSVCWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('lda')
 class LDAWrapper(nn.Module):
@@ -861,19 +880,19 @@ class LDAWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -882,15 +901,16 @@ class LDAWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('qda')
 class QDAWrapper(nn.Module):
@@ -901,19 +921,19 @@ class QDAWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -922,16 +942,15 @@ class QDAWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
-
 
 
 @register_model('nearest_centroid')
@@ -944,19 +963,19 @@ class NearestCentroidWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -965,10 +984,10 @@ class NearestCentroidWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
@@ -981,26 +1000,26 @@ class LassoWrapper(nn.Module):
     def __init__(self):
         super().__init__()
         self.model = LogisticRegression(
-            penalty='l1',    # LASSO 正则化
+            penalty='l1',  # LASSO 正则化
             solver='liblinear',  # 'liblinear' 支持 L1 正则化
             multi_class='ovr',  # one-vs-rest
             random_state=42
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -1009,15 +1028,16 @@ class LassoWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('ridge')
 class RidgeClassifierWrapper(nn.Module):
@@ -1028,19 +1048,19 @@ class RidgeClassifierWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
         return torch.tensor(predicted, dtype=torch.long)
-    
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -1049,15 +1069,16 @@ class RidgeClassifierWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('elastic_net')
 class ElasticNetWrapper(nn.Module):
@@ -1070,19 +1091,19 @@ class ElasticNetWrapper(nn.Module):
         )
         self.scaler = StandardScaler()
         self.is_fitted = False
-    
+
     def forward(self, x):
         if isinstance(x, torch.Tensor):
             x = x.cpu().numpy()
         x = x.reshape(x.shape[0], -1)
-        
+
         if not self.is_fitted:
             return torch.zeros((x.shape[0]))
-        
+
         x = self.scaler.transform(x)
         predicted = self.model.predict(x)
-        return torch.tensor(predicted, dtype=torch.float32)
-    
+        return torch.tensor(predicted, dtype=torch.long)
+
     def train(self, mode=True):
         if mode:
             all_data = []
@@ -1091,15 +1112,16 @@ class ElasticNetWrapper(nn.Module):
                 data = data.numpy().reshape(data.shape[0], -1)
                 all_data.append(data)
                 all_labels.append(target.numpy())
-            
+
             X = np.concatenate(all_data)
             y = np.concatenate(all_labels)
-            
+
             self.scaler.fit(X)
             X = self.scaler.transform(X)
             self.model.fit(X, y)
             self.is_fitted = True
         return self
+
 
 @register_model('simple_cnn')
 class SimpleCNN(nn.Module):
@@ -1108,16 +1130,24 @@ class SimpleCNN(nn.Module):
         self.conv1 = nn.Conv1d(in_channels=14, out_channels=32, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv1d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
-        self.fc1 = nn.Linear(64 * (duration // 2), 128)
+        
+        # 更新 fc1_input_size 为 8192
+        self.fc1_input_size = 64 * sr  # 64 channels * 128 time steps
+        self.fc1 = nn.Linear(self.fc1_input_size, 128)
         self.fc2 = nn.Linear(128, len(class_names))
-    
+
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
+        
+        # 打印展平前的形状
+        print(f'Feature map size before flatten: {x.shape}')
+        
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+
 
 @register_model('simple_rnn')
 class SimpleRNN(nn.Module):
@@ -1125,12 +1155,13 @@ class SimpleRNN(nn.Module):
         super(SimpleRNN, self).__init__()
         self.rnn = nn.RNN(input_size=14, hidden_size=64, num_layers=1, batch_first=True)
         self.fc = nn.Linear(64, len(class_names))
-    
+
     def forward(self, x):
         x = x.permute(0, 2, 1)  # [batch, time, channels]
         _, h_n = self.rnn(x)
         x = self.fc(h_n[-1])
         return x
+
 
 @register_model('simple_lstm')
 class SimpleLSTM(nn.Module):
@@ -1138,12 +1169,13 @@ class SimpleLSTM(nn.Module):
         super(SimpleLSTM, self).__init__()
         self.lstm = nn.LSTM(input_size=14, hidden_size=64, num_layers=1, batch_first=True)
         self.fc = nn.Linear(64, len(class_names))
-    
+
     def forward(self, x):
         x = x.permute(0, 2, 1)  # [batch, time, channels]
         _, (h_n, _) = self.lstm(x)
         x = self.fc(h_n[-1])
         return x
+
 
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
@@ -1159,7 +1191,7 @@ class BasicBlock(nn.Module):
                 nn.Conv1d(in_channels, out_channels, kernel_size=1, stride=stride),
                 nn.BatchNorm1d(out_channels)
             )
-    
+
     def forward(self, x):
         identity = self.downsample(x)
         out = self.conv1(x)
@@ -1171,6 +1203,7 @@ class BasicBlock(nn.Module):
         out = self.relu(out)
         return out
 
+
 @register_model('resnet_like')
 class ResNetLike(nn.Module):
     def __init__(self):
@@ -1178,16 +1211,25 @@ class ResNetLike(nn.Module):
         self.layer1 = BasicBlock(14, 64)
         self.layer2 = BasicBlock(64, 128, stride=2)
         self.layer3 = BasicBlock(128, 256, stride=2)
-        self.fc = nn.Linear(256 * (duration // 4), len(class_names))
-    
+        self.layer4 = BasicBlock(256, 256, stride=2)
+        self.layer5 = BasicBlock(256, 256, stride=2)
+        self.layer6 = BasicBlock(256, 256, stride=2)
+        self.layer7 = BasicBlock(256, 256, stride=2)
+        self.fc = nn.Linear(256 * (duration*sr // 64), len(class_names))
+
     def forward(self, x):
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.layer5(x)
+        x = self.layer6(x)
+        x = self.layer7(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
         return x
-    
+
+
 @register_model('transformer_like')
 class TransformerLike(nn.Module):
     def __init__(self):
@@ -1198,7 +1240,7 @@ class TransformerLike(nn.Module):
             num_layers=2
         )
         self.fc = nn.Linear(64, len(class_names))
-    
+
     def forward(self, x):
         x = x.permute(2, 0, 1)  # [time, batch, channels]
         x = self.embedding(x)
@@ -1206,8 +1248,8 @@ class TransformerLike(nn.Module):
         x = x.mean(dim=0)  # 平均池化
         x = self.fc(x)
         return x
-    
-    
+
+
 class DenseBlock(nn.Module):
     def __init__(self, in_channels, growth_rate, num_layers):
         super(DenseBlock, self).__init__()
@@ -1218,7 +1260,7 @@ class DenseBlock(nn.Module):
                 nn.ReLU(inplace=True),
                 nn.Conv1d(in_channels + i * growth_rate, growth_rate, kernel_size=3, padding=1)
             ))
-    
+
     def forward(self, x):
         features = [x]
         for layer in self.layers:
@@ -1226,28 +1268,36 @@ class DenseBlock(nn.Module):
             features.append(new_feature)
         return torch.cat(features, dim=1)
 
+
 @register_model('densenet_like')
 class DenseNetLike(nn.Module):
     def __init__(self):
         super(DenseNetLike, self).__init__()
-        self.conv1 = nn.Conv1d(14, 32, kernel_size=3, padding=1)
-        self.dense_block1 = DenseBlock(32, 16, 4)
+        self.conv1 = nn.Conv1d(14, 16, kernel_size=3, padding=1)  # 减少输出通道数
+        self.dense_block1 = DenseBlock(16, 8, 4)  # 减少增长率
         self.transition1 = nn.Sequential(
-            nn.Conv1d(96, 48, kernel_size=1),
+            nn.Conv1d(48, 24, kernel_size=1),  # 减少输出通道数
             nn.AvgPool1d(kernel_size=2, stride=2)
         )
-        self.dense_block2 = DenseBlock(48, 16, 4)
-        self.fc = nn.Linear(144 * (duration // 2), len(class_names))
-    
+        self.dense_block2 = DenseBlock(24, 8, 4)  # 减少增长率
+        self.transition2 = nn.Sequential(
+            nn.Conv1d(56, 28, kernel_size=1),  # 添加额外的过渡层
+            nn.AvgPool1d(kernel_size=2, stride=2)
+        )
+        # 更新 fc 的输入大小为 3584
+        self.fc = nn.Linear(3584, len(class_names))  # 调整输入大小
+
     def forward(self, x):
         x = self.conv1(x)
         x = self.dense_block1(x)
         x = self.transition1(x)
         x = self.dense_block2(x)
+        x = self.transition2(x)  # 添加额外的过渡层
         x = x.view(x.size(0), -1)
         x = self.fc(x)
         return x
-    
+
+
 @register_model('lstm_attention')
 class LSTMAttention(nn.Module):
     def __init__(self):
@@ -1255,7 +1305,7 @@ class LSTMAttention(nn.Module):
         self.lstm = nn.LSTM(input_size=14, hidden_size=64, num_layers=1, batch_first=True)
         self.attention = nn.Linear(64, 1)
         self.fc = nn.Linear(64, len(class_names))
-    
+
     def forward(self, x):
         x = x.permute(0, 2, 1)  # [batch, time, channels]
         lstm_out, _ = self.lstm(x)
@@ -1263,29 +1313,28 @@ class LSTMAttention(nn.Module):
         context = torch.sum(attn_weights * lstm_out, dim=1)
         x = self.fc(context)
         return x
-    
 
 
 class InceptionModule(nn.Module):
     def __init__(self, in_channels):
         super(InceptionModule, self).__init__()
         self.branch1x1 = nn.Conv1d(in_channels, 16, kernel_size=1)
-        
+
         self.branch3x3 = nn.Sequential(
             nn.Conv1d(in_channels, 16, kernel_size=1),
             nn.Conv1d(16, 24, kernel_size=3, padding=1)
         )
-        
+
         self.branch5x5 = nn.Sequential(
             nn.Conv1d(in_channels, 16, kernel_size=1),
             nn.Conv1d(16, 24, kernel_size=5, padding=2)
         )
-        
+
         self.branch_pool = nn.Sequential(
             nn.MaxPool1d(kernel_size=3, stride=1, padding=1),
             nn.Conv1d(in_channels, 24, kernel_size=1)
         )
-    
+
     def forward(self, x):
         branch1x1 = self.branch1x1(x)
         branch3x3 = self.branch3x3(x)
@@ -1294,23 +1343,40 @@ class InceptionModule(nn.Module):
         outputs = [branch1x1, branch3x3, branch5x5, branch_pool]
         return torch.cat(outputs, 1)
 
+
 @register_model('inception_like')
 class InceptionLike(nn.Module):
     def __init__(self):
         super(InceptionLike, self).__init__()
         self.conv1 = nn.Conv1d(14, 32, kernel_size=3, padding=1)
+        self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)  # 添加池化层以减少特征图大小
         self.inception1 = InceptionModule(32)
+        self.pool2 = nn.MaxPool1d(kernel_size=2, stride=2)  # 添加池化层以减少特征图大小
         self.inception2 = InceptionModule(88)
-        self.fc = nn.Linear(88 * (duration // 2), len(class_names))
-    
+        self.pool3 = nn.MaxPool1d(kernel_size=2, stride=2)  # 添加池化层以减少特征图大小
+        self.inception3 = InceptionModule(88)  # 新增的Inception模块
+        self.pool4 = nn.MaxPool1d(kernel_size=2, stride=2)  # 新增的池化层
+        self.inception4 = InceptionModule(88)  # 新增的Inception模块
+        self.pool5 = nn.MaxPool1d(kernel_size=2, stride=2)  # 新增的池化层
+        
+        self.fc_input_size = 88 * duration*sr // 32  # 根据池化后的特征图大小调整
+        self.fc = nn.Linear(self.fc_input_size, len(class_names))
+
     def forward(self, x):
         x = self.conv1(x)
+        x = self.pool1(x)  # 应用池化层
         x = self.inception1(x)
+        x = self.pool2(x)  # 应用池化层
         x = self.inception2(x)
+        x = self.pool3(x)  # 应用池化层
+        x = self.inception3(x)  # 新增的Inception模块
+        x = self.pool4(x)  # 新增的池化层
+        x = self.inception4(x)  # 新增的Inception模块
+        x = self.pool5(x)  # 新增的池化层
         x = x.view(x.size(0), -1)
         x = self.fc(x)
         return x
-    
+
 
 class UNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -1318,40 +1384,58 @@ class UNetBlock(nn.Module):
         self.conv1 = nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv1d(out_channels, out_channels, kernel_size=3, padding=1)
-    
+
     def forward(self, x):
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         return x
 
+
 @register_model('unet_like')
 class UNetLike(nn.Module):
     def __init__(self):
         super(UNetLike, self).__init__()
+        # 编码器部分
         self.encoder1 = UNetBlock(14, 64)
         self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
         self.encoder2 = UNetBlock(64, 128)
         self.pool2 = nn.MaxPool1d(kernel_size=2, stride=2)
-        
-        self.decoder1 = UNetBlock(128, 64)
+
+        # 解码器部分
         self.up1 = nn.ConvTranspose1d(128, 64, kernel_size=2, stride=2)
-        self.decoder2 = UNetBlock(64, 32)
-        self.up2 = nn.ConvTranspose1d(64, 32, kernel_size=2, stride=2)
-        
-        self.final_conv = nn.Conv1d(32, len(class_names), kernel_size=1)
-    
+        self.decoder1 = UNetBlock(128, 64)  # 拼接后通道数为128
+        self.up2 = nn.ConvTranspose1d(64, 64, kernel_size=2, stride=2)
+        self.decoder2 = UNetBlock(128, 8)  # 拼接后通道数为128
+
+        # 计算池化后的特征图大小
+        self.fc_input_size = 32 * (duration * sr // 4)  # 根据池化后的特征图大小调整
+        self.fc = nn.Linear(self.fc_input_size, len(class_names))
+
     def forward(self, x):
+        # 编码器
         enc1 = self.encoder1(x)
         enc2 = self.encoder2(self.pool1(enc1))
-        
+
+        # 解码器
         dec1 = self.up1(enc2)
+        # 确保拼接前调整大小
+        if dec1.size(2) != enc1.size(2):
+            diff = enc1.size(2) - dec1.size(2)
+            dec1 = F.pad(dec1, (0, diff))  # 在最后一个维度上填充
         dec1 = torch.cat((dec1, enc1), dim=1)
         dec1 = self.decoder1(dec1)
-        
+
         dec2 = self.up2(dec1)
+        # 确保拼接前调整大小
+        if dec2.size(2) != x.size(2):
+            diff = x.size(2) - dec2.size(2)
+            dec2 = F.pad(dec2, (0, diff))  # 在最后一个维度上填充
+        dec2 = torch.cat((dec2, enc1), dim=1)  # 拼接解码器输出与编码器的第一层输出
         dec2 = self.decoder2(dec2)
-        
-        return self.final_conv(dec2)
+
+        # 展平特征图以输入到全连接层
+        dec2 = dec2.view(dec2.size(0), -1)
+        return self.fc(dec2)
     
 
 class DepthwiseSeparableConv(nn.Module):
@@ -1369,6 +1453,7 @@ class DepthwiseSeparableConv(nn.Module):
         x = self.relu(x)
         return x
 
+
 @register_model('mobilenet_like')
 class MobileNetLike(nn.Module):
     def __init__(self):
@@ -1381,19 +1466,20 @@ class MobileNetLike(nn.Module):
             DepthwiseSeparableConv(64, 128, stride=2),
             DepthwiseSeparableConv(128, 128),
             DepthwiseSeparableConv(128, 256, stride=2),
-            DepthwiseSeparableConv(256, 256),
-            DepthwiseSeparableConv(256, 512, stride=2),
+            DepthwiseSeparableConv(256, 256,stride=2),
+            DepthwiseSeparableConv(256, 256, stride=2),
+            DepthwiseSeparableConv(256, 256, stride=2),
         )
-        self.fc = nn.Linear(512 * (duration // 8), len(class_names))
-    
+        self.fc = nn.Linear(256 * duration*sr // 64, len(class_names))
+
     def forward(self, x):
         x = self.relu(self.bn1(self.conv1(x)))
         x = self.layers(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
         return x
-    
-    
+
+
 class FireModule(nn.Module):
     def __init__(self, in_channels, squeeze_channels, expand_channels):
         super(FireModule, self).__init__()
@@ -1402,13 +1488,14 @@ class FireModule(nn.Module):
         self.expand1x1 = nn.Conv1d(squeeze_channels, expand_channels, kernel_size=1)
         self.expand3x3 = nn.Conv1d(squeeze_channels, expand_channels, kernel_size=3, padding=1)
         self.expand_activation = nn.ReLU(inplace=True)
-    
+
     def forward(self, x):
         x = self.squeeze_activation(self.squeeze(x))
         return self.expand_activation(torch.cat([
             self.expand1x1(x),
             self.expand3x3(x)
         ], 1))
+
 
 @register_model('squeezenet_like')
 class SqueezeNetLike(nn.Module):
@@ -1423,19 +1510,26 @@ class SqueezeNetLike(nn.Module):
         self.fire4 = FireModule(128, 32, 128)
         self.pool2 = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)
         self.fire5 = FireModule(256, 32, 128)
-        self.fc = nn.Linear(256 * (duration // 8), len(class_names))
-    
+        self.pool3 = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)  # 第三个池化层
+        self.pool4 = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)  # 第四个池化层
+        self.pool5 = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)  # 第五个池化层
+        self.fc = nn.Linear(256 * duration*sr // 64, len(class_names))  # 修改输入维度（除以2048 = 4*8*8*8*8）
+
     def forward(self, x):
         x = self.relu(self.bn1(self.conv1(x)))
         x = self.pool1(x)
         x = self.fire2(x)
-        x = self.fire3(x)
-        x = self.fire4(x)
         x = self.pool2(x)
+        x = self.fire3(x)
+        x = self.pool3(x)
+        x = self.fire4(x)
+        x = self.pool4(x)
         x = self.fire5(x)
+        x = self.pool5(x)
         x = x.view(x.size(0), -1)
         x = self.fc(x)
         return x
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process some integers.')
@@ -1447,7 +1541,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int,
                         default=None,
                         help='Path to the CSV data file')
-    parser.add_argument('--model', type=str,
+    parser.add_argument('--model_name', type=str,
                         default=None,
                         help='choose model')
     args = parser.parse_args()
@@ -1459,21 +1553,21 @@ if __name__ == '__main__':
 
     # 现在你可以通过键来访问配置
     data_path = config['data_path']
-    data_shuffle = config.get('data_shuffle',True)  # 如果是False，就会按时间进行数据切分
-    exp_name = config.get('exp_name',os.path.basename(args.config_path)[:-5])
+    data_shuffle = config.get('data_shuffle', True)  # 如果是False，就会按时间进行数据切分
+    exp_name = config.get('exp_name', os.path.basename(args.config_path)[:-5])
     batch_size = config['batch_size']
     if args.seed is None:
         seed = config['seed']
     else:
         seed = args.seed
-    exp_name=exp_name+'/seed'+str(seed)
+    exp_name = exp_name + '/seed' + str(seed)
     # 如果用户指定了模型，则使用用户指定的模型，否则使用配置文件中的模型
-    if args.model is not None:
-        model_name=args.model
+    if args.model_name is not None:
+        model_name = args.model_name
     else:
-        model_name=config.get('model_name','eegnet')
+        model_name = config.get('model_name', 'eegnet')
     # 在exp_name中添加模型名称
-    exp_name=exp_name+'/'+model_name
+    exp_name = exp_name + '/' + model_name
     num_epochs = config['num_epochs']
     train_split = config['train_split']
     val_split = config['val_split']
@@ -1483,7 +1577,7 @@ if __name__ == '__main__':
     sr = config['sr']
     duration = config['duration']
     # segment_marks = config['segment_marks']
-    segment_marks = config.get('segment_marks',None)
+    segment_marks = config.get('segment_marks', None)
     print(f'initial segment_marks:{segment_marks}')
     # print(type(sample_intention),sample_intention)
     torch.manual_seed(seed)
@@ -1527,8 +1621,6 @@ if __name__ == '__main__':
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-    # 定义一个简单的神经网络模型
-
     # 实例化模型
     model = get_model(model_name)()
 
@@ -1539,16 +1631,17 @@ if __name__ == '__main__':
         # print("fit_status_",model.model.fit_status_)
         # 直接进行测试评估
         test_accuracy, test_f1 = test_model(model, test_loader)
-        
+
         # 保存结果
         save_json_path = f'fig/{exp_name}/results.json'
         results = {
             'test_accuracy': test_accuracy,
             'test_f1': test_f1
         }
-        
+        print(results)
+        print(save_json_path)
         with open(save_json_path, 'w') as f:
-            json.dumps(results, indent=4)
+            json.dump(results, f, indent=4)
 
     else:
         # 深度学习模型走原来的流程
@@ -1559,16 +1652,16 @@ if __name__ == '__main__':
         val_loss_history = []
         train_accuracy_history = []
         val_accuracy_history = []
-        
+
         # 训练模型
         train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=num_epochs)
 
         # 绘制训练曲线并保存结果
-        
+
         # load best model after training
         model = torch.load(f'model/{exp_name}.pth', weights_only=False)
         test_accuracy, test_f1 = test_model(model, test_loader)
-        
+
         # 绘制训练和验证损失
         plt.plot(train_loss_history, label='Train loss')
         plt.plot(val_loss_history, label='Validation loss')
@@ -1593,4 +1686,4 @@ if __name__ == '__main__':
         }
 
         with open(save_json_path, 'w') as f:
-            json.dumps(results, indent=4)
+            json.dump(results, f, indent=4)
