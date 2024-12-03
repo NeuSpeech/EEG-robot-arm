@@ -36,3 +36,4 @@ if __name__=='__main__':
     acc=np.mean(acc_results)
     f1=np.mean(f1_results)
     print(acc,f1)
+
