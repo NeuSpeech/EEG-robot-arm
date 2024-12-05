@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import TensorDataset, DataLoader, random_split, Subset
-from einops import rearrange
+from einops import rearrange, repeat
 from torch import nn
 from torch.nn import functional as F
 from sklearn.metrics import f1_score, confusion_matrix
@@ -179,48 +179,6 @@ def test_model(model, test_loader):
     return accuracy, f1
 
 
-@register_model('eegnet')
-class EEGNet(nn.Module):
-    def __init__(self):
-        super(EEGNet, self).__init__()
-
-        # 第一层卷积，使用一维卷积
-        self.conv1 = nn.Conv1d(in_channels=14, out_channels=16, kernel_size=5, stride=1, padding=2)
-        self.batchnorm1 = nn.BatchNorm1d(num_features=16)
-
-        # 深度卷积层
-        self.depth_conv = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1, groups=16)
-        self.batchnorm2 = nn.BatchNorm1d(num_features=32)
-
-        # 分离卷积层
-        self.separable_conv = nn.Conv1d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1, groups=32)
-        self.batchnorm3 = nn.BatchNorm1d(num_features=32)
-
-        # 平均池化层
-        self.avgpool = nn.AvgPool1d(kernel_size=4)
-
-        # 全连接层
-        self.fc = nn.Linear(32 * 32 * duration, len(class_names))  # 640 / 4 = 160
-
-    def forward(self, x):
-        # x shape [B,C,T]
-        x = F.relu(self.conv1(x))
-        x = self.batchnorm1(x)
-
-        x = F.relu(self.depth_conv(x))
-        x = self.batchnorm2(x)
-
-        x = F.relu(self.separable_conv(x))
-        x = self.batchnorm3(x)
-
-        x = self.avgpool(x)
-
-        # 展平特征图以输入到全连接层
-        x = x.view(x.size(0), -1)
-
-        x = self.fc(x)
-        # [B,class_num]
-        return x
 
 
 def load_data(data_path):
@@ -272,13 +230,18 @@ def load_one_data(data_path):
     datas = [np.stack(datas[i]) for i in range(len(datas))]
     labels = [np.zeros(datas[i].shape[0]) + i for i in range(len(datas))]
     # 合并眨眼和咬牙的数据和标签
-    # datas shape: [classes, data_num, sample_length, channel_num]
-    # labels shape:[classes, data_num]
     datas = np.concatenate(datas)
     labels = np.concatenate(labels).astype(np.int32)
+    # datas shape: [classes, data_num, sample_length, channel_num]
+    # labels shape:[classes, data_num]
     # 把数据按照时间的顺序组装
     datas = rearrange(datas, '(a b) c d-> (b a) c d', a=classes_num)
     labels = rearrange(labels, '(a b) -> (b a)', a=classes_num)
+    # 将每个样本分割成多个piece
+    datas = rearrange(datas, 'n (t p) d -> (n t) p d', p=piece_length)
+    # 对应地重复标签
+    labels = repeat(labels, 'n -> (n t)', t=(duration*sr//piece_length))
+    
     # print(f'datas:{datas.shape}')
     # print(datas[:5],labels[:5])
     # print(datas[-5:],labels[-5:])
@@ -1132,7 +1095,7 @@ class SimpleCNN(nn.Module):
         self.pool = nn.MaxPool1d(kernel_size=2, stride=2)
         
         # 更新 fc1_input_size 为 8192
-        self.fc1_input_size = 64 * sr  # 64 channels * 128 time steps
+        self.fc1_input_size = 64 * sr*piece_duration//4  # 64 channels * 128 time steps
         self.fc1 = nn.Linear(self.fc1_input_size, 128)
         self.fc2 = nn.Linear(128, len(class_names))
 
@@ -1140,8 +1103,6 @@ class SimpleCNN(nn.Module):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         
-        # 打印展平前的形状
-        print(f'Feature map size before flatten: {x.shape}')
         
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
@@ -1215,7 +1176,7 @@ class ResNetLike(nn.Module):
         self.layer5 = BasicBlock(256, 256, stride=2)
         self.layer6 = BasicBlock(256, 256, stride=2)
         self.layer7 = BasicBlock(256, 256, stride=2)
-        self.fc = nn.Linear(256 * (duration*sr // 64), len(class_names))
+        self.fc = nn.Linear(256 * (piece_duration*sr // 64), len(class_names))
 
     def forward(self, x):
         x = self.layer1(x)
@@ -1284,8 +1245,8 @@ class DenseNetLike(nn.Module):
             nn.Conv1d(56, 28, kernel_size=1),  # 添加额外的过渡层
             nn.AvgPool1d(kernel_size=2, stride=2)
         )
-        # 更新 fc 的输入大小为 3584
-        self.fc = nn.Linear(3584, len(class_names))  # 调整输入大小
+        # 更新 fc 的输入大小为 piece_duration*7*128
+        self.fc = nn.Linear(piece_duration*7*128, len(class_names))  # 调整输入大小
 
     def forward(self, x):
         x = self.conv1(x)
@@ -1359,7 +1320,7 @@ class InceptionLike(nn.Module):
         self.inception4 = InceptionModule(88)  # 新增的Inception模块
         self.pool5 = nn.MaxPool1d(kernel_size=2, stride=2)  # 新增的池化层
         
-        self.fc_input_size = 88 * duration*sr // 32  # 根据池化后的特征图大小调整
+        self.fc_input_size = 88 * piece_duration*sr // 32  # 根据池化后的特征图大小调整
         self.fc = nn.Linear(self.fc_input_size, len(class_names))
 
     def forward(self, x):
@@ -1408,7 +1369,7 @@ class UNetLike(nn.Module):
         self.decoder2 = UNetBlock(128, 8)  # 拼接后通道数为128
 
         # 计算池化后的特征图大小
-        self.fc_input_size = 32 * (duration * sr // 4)  # 根据池化后的特征图大小调整
+        self.fc_input_size = 32 * (piece_duration * sr // 4)  # 根据池化后的特征图大小调整
         self.fc = nn.Linear(self.fc_input_size, len(class_names))
 
     def forward(self, x):
@@ -1470,7 +1431,7 @@ class MobileNetLike(nn.Module):
             DepthwiseSeparableConv(256, 256, stride=2),
             DepthwiseSeparableConv(256, 256, stride=2),
         )
-        self.fc = nn.Linear(256 * duration*sr // 64, len(class_names))
+        self.fc = nn.Linear(256 * piece_duration*sr // 64, len(class_names))
 
     def forward(self, x):
         x = self.relu(self.bn1(self.conv1(x)))
@@ -1513,7 +1474,7 @@ class SqueezeNetLike(nn.Module):
         self.pool3 = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)  # 第三个池化层
         self.pool4 = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)  # 第四个池化层
         self.pool5 = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)  # 第五个池化层
-        self.fc = nn.Linear(256 * duration*sr // 64, len(class_names))  # 修改输入维度（除以2048 = 4*8*8*8*8）
+        self.fc = nn.Linear(256 * piece_duration*sr // 64, len(class_names))  # 修改输入维度（除以2048 = 4*8*8*8*8）
 
     def forward(self, x):
         x = self.relu(self.bn1(self.conv1(x)))
@@ -1530,6 +1491,48 @@ class SqueezeNetLike(nn.Module):
         x = self.fc(x)
         return x
 
+@register_model('eegnet')
+class EEGNet(nn.Module):
+    def __init__(self):
+        super(EEGNet, self).__init__()
+
+        # 第一层卷积，使用一维卷积
+        self.conv1 = nn.Conv1d(in_channels=14, out_channels=16, kernel_size=5, stride=1, padding=2)
+        self.batchnorm1 = nn.BatchNorm1d(num_features=16)
+
+        # 深度卷积层
+        self.depth_conv = nn.Conv1d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1, groups=16)
+        self.batchnorm2 = nn.BatchNorm1d(num_features=32)
+
+        # 分离卷积层
+        self.separable_conv = nn.Conv1d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1, groups=32)
+        self.batchnorm3 = nn.BatchNorm1d(num_features=32)
+
+        # 平均池化层
+        self.avgpool = nn.AvgPool1d(kernel_size=4)
+
+        # 全连接层
+        self.fc = nn.Linear(32 * sr//4 * piece_duration, len(class_names))  # 640 / 4 = 160
+
+    def forward(self, x):
+        # x shape [B,C,T]
+        x = F.relu(self.conv1(x))
+        x = self.batchnorm1(x)
+
+        x = F.relu(self.depth_conv(x))
+        x = self.batchnorm2(x)
+
+        x = F.relu(self.separable_conv(x))
+        x = self.batchnorm3(x)
+
+        x = self.avgpool(x)
+
+        # 展平特征图以输入到全连接层
+        x = x.view(x.size(0), -1)
+
+        x = self.fc(x)
+        # [B,class_num]
+        return x
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process some integers.')
@@ -1566,6 +1569,7 @@ if __name__ == '__main__':
         model_name = args.model_name
     else:
         model_name = config.get('model_name', 'eegnet')
+    print(f'model_name:{model_name}')
     # 在exp_name中添加模型名称
     exp_name = exp_name + '/' + model_name
     num_epochs = config['num_epochs']
@@ -1576,6 +1580,8 @@ if __name__ == '__main__':
     class_names = config['class_names']
     sr = config['sr']
     duration = config['duration']
+    piece_duration = config.get('piece_duration', duration)
+    piece_length = piece_duration * sr
     # segment_marks = config['segment_marks']
     segment_marks = config.get('segment_marks', None)
     print(f'initial segment_marks:{segment_marks}')
@@ -1598,7 +1604,7 @@ if __name__ == '__main__':
     data_tensor = torch.tensor(data, dtype=torch.float32)
     labels_tensor = torch.tensor(labels, dtype=torch.long)
     data_tensor = torch.permute(data_tensor, (0, 2, 1))
-
+    print(f'data_tensor.shape:{data_tensor.shape},labels_tensor.shape:{labels_tensor.shape}')
     # print(data_tensor.shape,labels_tensor.shape)
     # exit()
     # print(data_tensor[:5],labels_tensor[:5])

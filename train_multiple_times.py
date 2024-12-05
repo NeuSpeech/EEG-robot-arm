@@ -16,6 +16,7 @@ if __name__=='__main__':
     parser.add_argument('--config_path', type=str,)
     parser.add_argument('--run_training', type=str, default='False',)
     parser.add_argument('--model_names', type=str, nargs='+', default=None,)
+    parser.add_argument('--seed_numbers', type=int, default=10,)
     args = parser.parse_args()
     config_path = args.config_path
     args.run_training = args.run_training.lower() in ['true']
@@ -24,7 +25,7 @@ if __name__=='__main__':
     f1_results = {model_name: [] for model_name in args.model_names}
 
     for model_name in args.model_names:
-        for i in range(10):
+        for i in range(args.seed_numbers):
             if args.run_training:
                 os.system(f'python train.py --config_path={config_path} --model_name={model_name} --seed={i}')
             result_path = f'fig/{os.path.basename(config_path)[:-5]}/seed{i}/{model_name}/results.json'
