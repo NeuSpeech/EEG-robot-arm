@@ -64,7 +64,7 @@ if __name__=='__main__':
             'F1 Min': f1_min,
             'F1 Max': f1_max,
         })
-
+    print(results_data)
     # 将结果保存为Excel文件
     df = pd.DataFrame(results_data)
     excel_path = f'fig/{os.path.basename(config_path)[:-5]}/model_performance.xlsx'

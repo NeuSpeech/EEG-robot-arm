@@ -57,19 +57,20 @@ def get_model(name):
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=10):
     best_acc = 0
+    model.to(device)
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
         train_correct = 0
         for data, target in train_loader:
             optimizer.zero_grad()
-            output = model(data)
-            loss = criterion(output, target)
+            output = model(data.to(device))
+            loss = criterion(output, target.to(device))
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
             _, predicted = torch.max(output.data, 1)
-            train_correct += (predicted == target).sum().item()
+            train_correct += (predicted == target.to(device)).sum().item()
         train_accuracy_history.append(train_correct / len(train_loader.dataset))
         train_loss_history.append(running_loss / len(train_loader.dataset))
 
@@ -82,12 +83,12 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         total_val = 0
         with torch.no_grad():
             for data, target in val_loader:
-                output = model(data)
-                loss = criterion(output, target)
+                output = model(data.to(device))
+                loss = criterion(output, target.to(device))
                 val_loss += loss.item()
                 _, predicted = torch.max(output.data, 1)
                 total_val += target.size(0)
-                val_correct += (predicted == target).sum().item()
+                val_correct += (predicted == target.to(device)).sum().item()
         val_loss_history.append(val_loss / len(val_loader.dataset))
         val_accuracy = val_correct / total_val
         val_accuracy_history.append(val_accuracy)
@@ -157,15 +158,16 @@ def test_model(model, test_loader):
     else:
         # 深度学习模型的测试过程
         with torch.no_grad():
+            model.to(device)
             for data, target in test_loader:
-                output = model(data)
-                loss = criterion(output, target)
+                output = model(data.to(device))
+                loss = criterion(output, target.to(device))
                 test_loss += loss.item()
                 _, predicted = torch.max(output.data, 1)
                 total += target.size(0)
-                correct += (predicted == target).sum().item()
-                all_predicted.extend(predicted.numpy())
-                all_targets.extend(target.numpy())
+                correct += (predicted == target.to(device)).sum().item()
+                all_predicted.extend(predicted.cpu().numpy())
+                all_targets.extend(target.cpu().numpy())
         test_loss /= len(test_loader.dataset)
 
     accuracy = correct / total
@@ -1339,6 +1341,400 @@ class InceptionLike(nn.Module):
         return x
 
 
+@register_model('inception_like_v2') 
+class InceptionLikeV2(nn.Module):
+    def __init__(self):
+        super(InceptionLikeV2, self).__init__()
+        # 增加初始卷积层的通道数
+        self.conv1 = nn.Conv1d(14, 64, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(64)
+        self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        # 增加Inception模块的复杂度
+        self.inception1 = InceptionModule(64)  # 输入通道增加到64
+        self.bn2 = nn.BatchNorm1d(88)
+        self.pool2 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        self.inception2 = InceptionModule(88)
+        self.bn3 = nn.BatchNorm1d(88) 
+        self.pool3 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        self.inception3 = InceptionModule(88)
+        self.bn4 = nn.BatchNorm1d(88)
+        self.pool4 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        self.inception4 = InceptionModule(88)
+        self.bn5 = nn.BatchNorm1d(88)
+        self.pool5 = nn.MaxPool1d(kernel_size=2, stride=2)
+
+        # 添加SE注意力模块
+        self.se = SELayer(88)
+        
+        self.fc_input_size = 88 * piece_duration*sr // 32
+        # 添加dropout和更多全连接层
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(self.fc_input_size, 512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.Linear(128, len(class_names))
+        )
+
+    def forward(self, x):
+        # 添加残差连接
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = self.pool1(x)
+        
+        identity = x
+        x = self.inception1(x)
+        x = self.bn2(x)
+        x = self.pool2(x)
+        
+        x = self.inception2(x)
+        x = self.bn3(x)
+        x = self.pool3(x)
+        
+        x = self.inception3(x)
+        x = self.bn4(x)
+        x = self.pool4(x)
+        
+        x = self.inception4(x)
+        x = self.bn5(x)
+        x = self.pool5(x)
+        
+        # 应用SE注意力
+        x = self.se(x)
+        
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
+
+# SE注意力模块
+class SELayer(nn.Module):
+    def __init__(self, channel, reduction=16):
+        super(SELayer, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool1d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channel, channel // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel // reduction, channel, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1)
+        return x * y.expand_as(x)
+
+
+@register_model('inception_like_v3')
+class InceptionLikeV3(nn.Module):
+    def __init__(self):
+        super(InceptionLikeV3, self).__init__()
+        # 增加初始卷积层的通道数
+        self.conv1 = nn.Conv1d(14, 128, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(128)
+        self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        # 增加Inception模块的复杂度
+        self.inception1 = InceptionModule(128)
+        self.bn2 = nn.BatchNorm1d(88)
+        self.pool2 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        self.inception2 = InceptionModule(88)
+        self.bn3 = nn.BatchNorm1d(88) 
+        self.pool3 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        self.inception3 = InceptionModule(88)
+        self.bn4 = nn.BatchNorm1d(88)
+        self.pool4 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        self.inception4 = InceptionModule(88)
+        self.bn5 = nn.BatchNorm1d(88)
+        self.pool5 = nn.MaxPool1d(kernel_size=2, stride=2)
+
+        # 添加SE注意力模块
+        self.se = SELayer(88)
+        
+        self.fc_input_size = 88 * piece_duration * sr // 32
+        # 添加dropout和更多全连接层
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(self.fc_input_size, 1024),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(1024, 256),
+            nn.ReLU(),
+            nn.Linear(256, len(class_names))
+        )
+
+    def forward(self, x):
+        # 添加残差连接
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = self.pool1(x)
+        
+        x = self.inception1(x)
+        x = self.bn2(x)
+        x = self.pool2(x)
+        
+        x = self.inception2(x)
+        x = self.bn3(x)
+        x = self.pool3(x)
+        
+        x = self.inception3(x)
+        x = self.bn4(x)
+        x = self.pool4(x)
+        
+        x = self.inception4(x)
+        x = self.bn5(x)
+        x = self.pool5(x)
+        
+        # 应用SE注意力
+        x = self.se(x)
+        
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
+
+class SelfAttention(nn.Module):
+    def __init__(self, in_channels):
+        super(SelfAttention, self).__init__()
+        self.query_conv = nn.Conv1d(in_channels, in_channels // 8, kernel_size=1)
+        self.key_conv = nn.Conv1d(in_channels, in_channels // 8, kernel_size=1)
+        self.value_conv = nn.Conv1d(in_channels, in_channels, kernel_size=1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x):
+        batch_size, C, width = x.size()
+        query = self.query_conv(x).view(batch_size, -1, width).permute(0, 2, 1)
+        key = self.key_conv(x).view(batch_size, -1, width)
+        energy = torch.bmm(query, key)
+        attention = F.softmax(energy, dim=-1)
+        value = self.value_conv(x).view(batch_size, -1, width)
+
+        out = torch.bmm(value, attention.permute(0, 2, 1))
+        out = out.view(batch_size, C, width)
+        out = self.gamma * out + x
+        return out
+
+@register_model('inception_like_v4')
+class InceptionLikeV4(nn.Module):
+    def __init__(self):
+        super(InceptionLikeV4, self).__init__()
+        # 初始卷积层
+        self.conv1 = nn.Conv1d(14, 64, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(64)
+        self.pool1 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        # Inception模块
+        self.inception1 = InceptionModule(64)
+        self.bn2 = nn.BatchNorm1d(88)
+        self.pool2 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        self.inception2 = InceptionModule(88)
+        self.bn3 = nn.BatchNorm1d(88) 
+        self.pool3 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        self.inception3 = InceptionModule(88)
+        self.bn4 = nn.BatchNorm1d(88)
+        self.pool4 = nn.MaxPool1d(kernel_size=2, stride=2)
+        
+        self.inception4 = InceptionModule(88)
+        self.bn5 = nn.BatchNorm1d(88)
+        self.pool5 = nn.MaxPool1d(kernel_size=2, stride=2)
+
+        # 自注意力模块
+        self.self_attention = SelfAttention(88)
+        
+        self.fc_input_size = 88 * piece_duration * sr // 32
+        # 添加dropout和更多全连接层
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.5),
+            nn.Linear(self.fc_input_size, 512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.Linear(128, len(class_names))
+        )
+
+    def forward(self, x):
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = self.pool1(x)
+        
+        x = self.inception1(x)
+        x = self.bn2(x)
+        x = self.pool2(x)
+        
+        x = self.inception2(x)
+        x = self.bn3(x)
+        x = self.pool3(x)
+        
+        x = self.inception3(x)
+        x = self.bn4(x)
+        x = self.pool4(x)
+        
+        x = self.inception4(x)
+        x = self.bn5(x)
+        x = self.pool5(x)
+        
+        # 应用自注意力
+        x = self.self_attention(x)
+        
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
+    
+
+class ImprovedInceptionModule(nn.Module):
+    def __init__(self, in_channels, out1x1, red3x3, out3x3, red5x5, out5x5, pool_proj):
+        super(ImprovedInceptionModule, self).__init__()
+        
+        # 1x1 卷积分支
+        self.branch1 = nn.Sequential(
+            nn.Conv1d(in_channels, out1x1, kernel_size=1),
+            nn.BatchNorm1d(out1x1),
+            nn.ReLU(inplace=True)
+        )
+        
+        # 1x1 -> 3x3 卷积分支
+        self.branch2 = nn.Sequential(
+            nn.Conv1d(in_channels, red3x3, kernel_size=1),
+            nn.BatchNorm1d(red3x3),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(red3x3, out3x3, kernel_size=3, padding=1),
+            nn.BatchNorm1d(out3x3),
+            nn.ReLU(inplace=True)
+        )
+        
+        # 1x1 -> 5x5 卷积分支
+        self.branch3 = nn.Sequential(
+            nn.Conv1d(in_channels, red5x5, kernel_size=1),
+            nn.BatchNorm1d(red5x5),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(red5x5, out5x5, kernel_size=5, padding=2),
+            nn.BatchNorm1d(out5x5),
+            nn.ReLU(inplace=True)
+        )
+        
+        # maxpool -> 1x1 卷积分支
+        self.branch4 = nn.Sequential(
+            nn.MaxPool1d(kernel_size=3, stride=1, padding=1),
+            nn.Conv1d(in_channels, pool_proj, kernel_size=1),
+            nn.BatchNorm1d(pool_proj),
+            nn.ReLU(inplace=True)
+        )
+        
+    def forward(self, x):
+        branch1 = self.branch1(x)
+        branch2 = self.branch2(x)
+        branch3 = self.branch3(x)
+        branch4 = self.branch4(x)
+        return torch.cat([branch1, branch2, branch3, branch4], 1)
+
+@register_model('inception_like_v5')
+class InceptionLikeV5(nn.Module):
+    def __init__(self):
+        super(InceptionLikeV5, self).__init__()
+        
+        # 初始特征提取
+        self.pre_layers = nn.Sequential(
+            nn.Conv1d(14, 64, kernel_size=7, stride=2, padding=3),
+            nn.BatchNorm1d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=3, stride=2, padding=1),
+            nn.Conv1d(64, 64, kernel_size=1),
+            nn.BatchNorm1d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(64, 192, kernel_size=3, padding=1),
+            nn.BatchNorm1d(192),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(kernel_size=3, stride=2, padding=1)
+        )
+        
+        # Inception模块
+        self.inception3a = ImprovedInceptionModule(192, 64, 96, 128, 16, 32, 32)  # 256
+        self.inception3b = ImprovedInceptionModule(256, 128, 128, 192, 32, 96, 64)  # 480
+        self.maxpool3 = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)
+        
+        self.inception4a = ImprovedInceptionModule(480, 192, 96, 208, 16, 48, 64)  # 512
+        self.inception4b = ImprovedInceptionModule(512, 160, 112, 224, 24, 64, 64)  # 512
+        self.inception4c = ImprovedInceptionModule(512, 128, 128, 256, 24, 64, 64)  # 512
+        self.inception4d = ImprovedInceptionModule(512, 112, 144, 288, 32, 64, 64)  # 528
+        self.inception4e = ImprovedInceptionModule(528, 256, 160, 320, 32, 128, 128)  # 832
+        self.maxpool4 = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)
+        
+        self.inception5a = ImprovedInceptionModule(832, 256, 160, 320, 32, 128, 128)  # 832
+        self.inception5b = ImprovedInceptionModule(832, 384, 192, 384, 48, 128, 128)  # 1024
+        
+        # SE注意力
+        self.se = SELayer(1024, reduction=16)
+        
+        # 全局平均池化
+        self.avgpool = nn.AdaptiveAvgPool1d(1)
+        
+        # 分类器
+        self.dropout = nn.Dropout(0.4)
+        self.fc = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.3),
+            nn.Linear(512, len(class_names))
+        )
+        
+        self._initialize_weights()
+        
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv1d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                # 检查是否有bias再初始化
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+    
+    def forward(self, x):
+        # 预处理层
+        x = self.pre_layers(x)
+        
+        # Inception模块
+        x = self.inception3a(x)
+        x = self.inception3b(x)
+        x = self.maxpool3(x)
+        
+        x = self.inception4a(x)
+        x = self.inception4b(x)
+        x = self.inception4c(x)
+        x = self.inception4d(x)
+        x = self.inception4e(x)
+        x = self.maxpool4(x)
+        
+        x = self.inception5a(x)
+        x = self.inception5b(x)
+        
+        # SE注意力
+        x = self.se(x)
+        
+        # 全局平均池化
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        
+        # 分类
+        x = self.dropout(x)
+        x = self.fc(x)
+        return x
+    
+    
 class UNetBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(UNetBlock, self).__init__()
@@ -1548,7 +1944,11 @@ if __name__ == '__main__':
                         default=None,
                         help='choose model')
     args = parser.parse_args()
+    print(f'args:{args}')
+
     yaml_file_path = args.config_path
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # 读取 YAML 文件
     with open(yaml_file_path, 'r') as file:
